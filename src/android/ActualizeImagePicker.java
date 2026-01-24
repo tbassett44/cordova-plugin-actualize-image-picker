@@ -130,6 +130,8 @@ public class ActualizeImagePicker extends CordovaPlugin {
             // Set max selection limit if specified
             if (maxImages > 0) {
                 intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, Math.min(maxImages, MediaStore.getPickImagesMaxLimit()));
+            }else{
+                intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, MediaStore.getPickImagesMaxLimit());
             }
         } else {
             // Fallback for older Android versions - use ACTION_OPEN_DOCUMENT with EXTRA_ALLOW_MULTIPLE
@@ -217,7 +219,12 @@ public class ActualizeImagePicker extends CordovaPlugin {
             return;
         }
 
-        final String outputImagePath = compressImage(imageFileUri, this.imageQuality);
+        // Always process the image to convert content URI to accessible local file
+        final String outputImagePath = copyImageToLocal(imageFileUri, this.imageQuality);
+        if (outputImagePath == null) {
+            callbackContext.error("Failed to process image");
+            return;
+        }
         final String outputImageUri = Uri.fromFile(new File(outputImagePath)).toString();
 
         JsonArgs outResult = new JsonArgs();
@@ -239,9 +246,11 @@ public class ActualizeImagePicker extends CordovaPlugin {
 
         JSONArray imageUris = new JSONArray();
         for(String path : imageFilesUris) {
-            String outPath = path;
-            if (this.imageQuality != 100) {
-                outPath = compressImage(path, this.imageQuality);
+            // Always process the image to convert content URI to accessible local file
+            String outPath = copyImageToLocal(path, this.imageQuality);
+            if (outPath == null) {
+                // Skip images that failed to process
+                continue;
             }
             try {
                 final String imageUri = Uri.fromFile(new File(outPath)).toString();
@@ -252,7 +261,7 @@ public class ActualizeImagePicker extends CordovaPlugin {
         }
 
         JsonArgs outResult = new JsonArgs();
-        
+
         outResult.put("status", "OK");
         outResult.put("imageFilesUris", imageUris);
 
@@ -263,14 +272,15 @@ public class ActualizeImagePicker extends CordovaPlugin {
      *    PRIVATE UTILITY FUNCTIONS
      *---------------------------------
     /**
-     * Compresses the image located at the given path, down to the given quality,
-     * and returns the compressed image path.
+     * Copies the image from a content URI to a local file path, applying the specified quality.
+     * This is necessary because content URIs from the photo picker may not be directly accessible
+     * by Cordova's FileTransfer plugin.
      *
-     * @param imagePath the path of the original image
-     * @param quality the desired quality for the compressed image (from 0 to 100)
-     * @return the path of the compressed image path, or null in case of failure
+     * @param imagePath the content URI or path of the original image
+     * @param quality the desired quality for the output image (from 0 to 100)
+     * @return the path of the local image file, or null in case of failure
      */
-    private String compressImage(final String imagePath, final int quality) {
+    private String copyImageToLocal(final String imagePath, final int quality) {
         try {
             // Retrieves Bitmap
             final Uri imageUri = Uri.parse(imagePath);
