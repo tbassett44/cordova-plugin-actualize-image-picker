@@ -1,0 +1,34 @@
+{
+  "name": "cordova-plugin-actualize-image-picker",
+  "version": "1.1.1",
+  "description": "Simple Image Picker with multiple selection capability",
+  "files": [
+    "src/**/*",
+    "www/**/*",
+    "index.d.ts",
+    "plugin.xml",
+    "README.md",
+    "LICENSE"
+  ],
+  "cordova": {
+    "id": "cordova-plugin-actualize-image-picker",
+    "platforms": [
+      "android",
+      "ios"
+    ]
+  },
+  "types": "index.d.ts",
+  "main": "www/actualize-image-picker.js",
+  "keywords": [
+    "ecosystem:cordova",
+    "cordova-android",
+    "cordova-ios",
+    "image picker",
+    "multiple image picker",
+    "gallery",
+    "scanbot"
+  ],
+  "author": "doo GmbH",
+  "homepage": "https://scanbot.io",
+  "license": "MIT"
+}

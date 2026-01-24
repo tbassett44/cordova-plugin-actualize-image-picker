@@ -1,0 +1,6 @@
+framework module GMImagePickerWithCloudMediaDownloading {
+  umbrella header "GMImagePickerWithCloudMediaDownloading.h"
+
+  export *
+  module * { export * }
+}
