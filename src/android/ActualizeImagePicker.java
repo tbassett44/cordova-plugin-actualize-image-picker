@@ -47,6 +47,7 @@ public class ActualizeImagePicker extends CordovaPlugin {
     private CallbackContext callbackContext;
     private int imageQuality = 100;
     private int maxImages = 0;
+    private String mediaType = "image"; // "image", "video", or "all"
 
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
@@ -72,7 +73,7 @@ public class ActualizeImagePicker extends CordovaPlugin {
     }
 
     /**
-     * Opens the Android Photo Picker for single-image selection
+     * Opens the Android Photo Picker for single-image/video selection
      * Uses the native Jetpack Photo Picker on Android 11+ or falls back to ACTION_OPEN_DOCUMENT
      * @param args Map of optional arguments for customisation
      */
@@ -81,23 +82,30 @@ public class ActualizeImagePicker extends CordovaPlugin {
             this.imageQuality = args.getInt("imageQuality");
         } catch (Exception ignored) {}
 
+        try {
+            this.mediaType = args.getString("mediaType");
+        } catch (Exception ignored) {
+            this.mediaType = "image";
+        }
+
+        String mimeType = getMimeTypeForMediaType(this.mediaType);
         Intent intent;
 
         // Use the native photo picker on Android 11+ (API 30+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // Android 13+ - Use MediaStore.ACTION_PICK_IMAGES
             intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
-            intent.setType("image/*");
+            intent.setType(mimeType);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11-12 - Photo picker may be available via backport
             intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("image/*");
+            intent.setType(mimeType);
         } else {
             // Fallback for older Android versions
             intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("image/*");
+            intent.setType(mimeType);
         }
 
         cordova.setActivityResultCallback(ActualizeImagePicker.this);
@@ -105,7 +113,7 @@ public class ActualizeImagePicker extends CordovaPlugin {
     }
 
     /**
-     * Opens the Android Photo Picker for multi-image selection
+     * Opens the Android Photo Picker for multi-image/video selection
      * Uses the native Jetpack Photo Picker on Android 13+ or falls back to ACTION_OPEN_DOCUMENT with EXTRA_ALLOW_MULTIPLE
      * @param args Map of optional arguments for customisation
      */
@@ -120,13 +128,20 @@ public class ActualizeImagePicker extends CordovaPlugin {
             this.imageQuality = args.getInt("imageQuality");
         } catch (Exception ignored) {}
 
+        try {
+            this.mediaType = args.getString("mediaType");
+        } catch (Exception ignored) {
+            this.mediaType = "image";
+        }
+
+        String mimeType = getMimeTypeForMediaType(this.mediaType);
         Intent intent;
 
         // Use the native photo picker on Android 13+ (API 33+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // Android 13+ - Use MediaStore.ACTION_PICK_IMAGES with multiple selection
             intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
-            intent.setType("image/*");
+            intent.setType(mimeType);
             // Set max selection limit if specified
             if (maxImages > 0) {
                 intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, Math.min(maxImages, MediaStore.getPickImagesMaxLimit()));
@@ -137,7 +152,7 @@ public class ActualizeImagePicker extends CordovaPlugin {
             // Fallback for older Android versions - use ACTION_OPEN_DOCUMENT with EXTRA_ALLOW_MULTIPLE
             intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("image/*");
+            intent.setType(mimeType);
             intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         }
 
@@ -204,57 +219,57 @@ public class ActualizeImagePicker extends CordovaPlugin {
      *---------------------------------
 
      /**
-     * Handles Single Image Picker's result and returns the JSON data to Cordova JS
+     * Handles Single Image/Video Picker's result and returns the JSON data to Cordova JS
      * @param isCanceled true if the operation was canceled by the user, false otherwise
-     * @param imageFileUri the URI of the selected file
+     * @param mediaFileUri the URI of the selected file
      */
-    private void handleSingleImagePickerResult(final boolean isCanceled, final String imageFileUri) {
+    private void handleSingleImagePickerResult(final boolean isCanceled, final String mediaFileUri) {
         if (isCanceled) {
             callbackContext.success(new JsonArgs().put("status", "CANCELED").jsonObj());
             return;
         }
 
-        if (imageFileUri == null) {
-            callbackContext.error("Found null 'imageFileUri' in handleSingleImagePickerResult");
+        if (mediaFileUri == null) {
+            callbackContext.error("Found null 'mediaFileUri' in handleSingleImagePickerResult");
             return;
         }
 
-        // Always process the image to convert content URI to accessible local file
-        final String outputImagePath = copyImageToLocal(imageFileUri, this.imageQuality);
-        if (outputImagePath == null) {
-            callbackContext.error("Failed to process image");
+        // Always process the media to convert content URI to accessible local file
+        final String outputPath = copyMediaToLocal(mediaFileUri, this.imageQuality);
+        if (outputPath == null) {
+            callbackContext.error("Failed to process media file");
             return;
         }
-        final String outputImageUri = Uri.fromFile(new File(outputImagePath)).toString();
+        final String outputUri = Uri.fromFile(new File(outputPath)).toString();
 
         JsonArgs outResult = new JsonArgs();
         outResult.put("status", "OK");
-        outResult.put("imageFileUri", outputImageUri);
+        outResult.put("imageFileUri", outputUri);
         callbackContext.success(outResult.jsonObj());
     }
 
     /**
-     * Handles Multiple Image Picker's result and returns the JSON data to Cordova JS
+     * Handles Multiple Image/Video Picker's result and returns the JSON data to Cordova JS
      * @param isCanceled true if the operation was canceled by the user, false otherwise
-     * @param imageFilesUris an array containing the file URIs for all the images selected
+     * @param mediaFilesUris an array containing the file URIs for all the media selected
      */
-    private void handleMultipleImagePickerResult(final boolean isCanceled, final String[] imageFilesUris) {
+    private void handleMultipleImagePickerResult(final boolean isCanceled, final String[] mediaFilesUris) {
         if (isCanceled) {
             callbackContext.success(new JsonArgs().put("status", "CANCELED").jsonObj());
             return;
         }
 
-        JSONArray imageUris = new JSONArray();
-        for(String path : imageFilesUris) {
-            // Always process the image to convert content URI to accessible local file
-            String outPath = copyImageToLocal(path, this.imageQuality);
+        JSONArray mediaUris = new JSONArray();
+        for(String path : mediaFilesUris) {
+            // Always process the media to convert content URI to accessible local file
+            String outPath = copyMediaToLocal(path, this.imageQuality);
             if (outPath == null) {
-                // Skip images that failed to process
+                // Skip media files that failed to process
                 continue;
             }
             try {
-                final String imageUri = Uri.fromFile(new File(outPath)).toString();
-                imageUris.put(imageUri);
+                final String mediaUri = Uri.fromFile(new File(outPath)).toString();
+                mediaUris.put(mediaUri);
             } catch(Exception e) {
                 e.printStackTrace();
             }
@@ -263,7 +278,7 @@ public class ActualizeImagePicker extends CordovaPlugin {
         JsonArgs outResult = new JsonArgs();
 
         outResult.put("status", "OK");
-        outResult.put("imageFilesUris", imageUris);
+        outResult.put("imageFilesUris", mediaUris);
 
         callbackContext.success(outResult.jsonObj());
     }
@@ -376,5 +391,107 @@ public class ActualizeImagePicker extends CordovaPlugin {
         matrix.postRotate(angle);
         return Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(),
                 matrix, true);
+    }
+
+    /**
+     * Returns the MIME type filter string for the photo picker based on the mediaType setting.
+     * @param mediaType "image", "video", or "all"
+     * @return the MIME type string for the intent
+     */
+    private String getMimeTypeForMediaType(String mediaType) {
+        if ("video".equals(mediaType)) {
+            return "video/*";
+        } else if ("all".equals(mediaType)) {
+            return "*/*";
+        } else {
+            return "image/*";
+        }
+    }
+
+    /**
+     * Checks if the given URI points to a video file.
+     * @param uri the content URI to check
+     * @return true if the URI is a video, false otherwise
+     */
+    private boolean isVideoUri(String uri) {
+        if (uri == null) return false;
+
+        try {
+            String mimeType = cordova.getContext().getContentResolver().getType(Uri.parse(uri));
+            return mimeType != null && mimeType.startsWith("video/");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Copies a video from a content URI to a local file path.
+     * @param videoUri the content URI of the video
+     * @return the path of the local video file, or null in case of failure
+     */
+    private String copyVideoToLocal(final String videoUri) {
+        try {
+            Uri uri = Uri.parse(videoUri);
+
+            // Get the MIME type to determine the extension
+            String mimeType = cordova.getContext().getContentResolver().getType(uri);
+            String extension = "mp4"; // Default extension
+            if (mimeType != null) {
+                if (mimeType.contains("mp4")) {
+                    extension = "mp4";
+                } else if (mimeType.contains("3gp")) {
+                    extension = "3gp";
+                } else if (mimeType.contains("webm")) {
+                    extension = "webm";
+                } else if (mimeType.contains("mkv")) {
+                    extension = "mkv";
+                } else if (mimeType.contains("avi")) {
+                    extension = "avi";
+                } else if (mimeType.contains("mov") || mimeType.contains("quicktime")) {
+                    extension = "mov";
+                }
+            }
+
+            // Generate output path
+            final String outputFileName = String.format(Locale.US, "video_%d_%d.%s",
+                System.currentTimeMillis(), videoUri.hashCode(), extension);
+            final File outputDir = cordova.getActivity().getCacheDir();
+            final String outputPath = outputDir + "/" + outputFileName;
+
+            // Copy the video file
+            InputStream inputStream = cordova.getContext().getContentResolver().openInputStream(uri);
+            if (inputStream == null) {
+                throw new IOException("Could not open input stream for video");
+            }
+
+            OutputStream outputStream = new FileOutputStream(outputPath);
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+            }
+
+            inputStream.close();
+            outputStream.close();
+
+            return outputPath;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Copies a media file (image or video) from a content URI to a local file path.
+     * @param mediaUri the content URI of the media
+     * @param quality the quality setting for images (ignored for videos)
+     * @return the path of the local file, or null in case of failure
+     */
+    private String copyMediaToLocal(final String mediaUri, final int quality) {
+        if (isVideoUri(mediaUri)) {
+            return copyVideoToLocal(mediaUri);
+        } else {
+            return copyImageToLocal(mediaUri, quality);
+        }
     }
 }

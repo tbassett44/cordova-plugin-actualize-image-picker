@@ -14,6 +14,7 @@
 #import <PhotosUI/PhotosUI.h>
 @import UIKit;
 @import Foundation;
+@import AVFoundation;
 
 #import "ActualizeImagePickerConfiguration.h"
 
@@ -39,7 +40,9 @@ static NSString *const Error_IOS_13 = @"iOS13_ImageManager_returned_nil";
                        completion:(MultipleImagePickerCompletionBlock) completion;
 
 /// Get the imagePicker viewController instance based on iOS version.
-- (UIViewController*)getImagePickerViewController:(NSUInteger)imageSelectionLimit;
+/// @param imageSelectionLimit the maximum number of items that can be selected (0 = unlimited)
+/// @param mediaType the type of media to show ("image", "video", or "all")
+- (UIViewController*)getImagePickerViewController:(NSUInteger)imageSelectionLimit mediaType:(NSString*)mediaType;
 @end
 
 #endif

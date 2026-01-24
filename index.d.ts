@@ -10,23 +10,34 @@
 ///// Base Cordova API
 export type ActualizeImagePickerStatus = "OK" | "CANCELED";
 
+// Media type for the picker
+export type ActualizeImagePickerMediaType = "image" | "video" | "all";
+
 // Configurations
 export interface ActualizeImagePickerSingleConfiguration {
     /**
-     * The quality of the images returned by the Image Picker, from 0 to 1 (default = 1.0)
+     * The quality of the images returned by the Image Picker, from 0 to 100 (default = 100)
      */
     imageQuality?: number;
+    /**
+     * The type of media to pick: "image", "video", or "all" (default = "image")
+     */
+    mediaType?: ActualizeImagePickerMediaType;
 }
 
 export interface ActualizeImagePickerMultipleConfiguration {
     /**
-     * Maximum selectable images. Default is 0 (unlimited).
+     * Maximum selectable items. Default is 0 (unlimited).
      */
-    maxImages?: number;   
+    maxImages?: number;
     /**
-     * The quality of the images returned by the Image Picker, from 0 to 1 (default = 1.0)
+     * The quality of the images returned by the Image Picker, from 0 to 100 (default = 100)
      */
     imageQuality?: number;
+    /**
+     * The type of media to pick: "image", "video", or "all" (default = "image")
+     */
+    mediaType?: ActualizeImagePickerMediaType;
 }
 
 // Results
@@ -44,8 +55,8 @@ export interface ActualizeImagePickerMultipleResult {
 }
 
 export interface ActualizeImagePickerModule {
-    pickImage(configuration?: ActualizeImagePickerSingleConfiguration): Promise ActualizeImagePickerGenericResult & ActualizeImagePickerSingleResult>;
-    pickImages(configuration?: ActualizeImagePickerMultipleConfiguration): Promise ActualizeImagePickerGenericResult & ActualizeImagePickerMultipleResult>;
+    pickImage(configuration?: ActualizeImagePickerSingleConfiguration): Promise<ActualizeImagePickerGenericResult & ActualizeImagePickerSingleResult>;
+    pickImages(configuration?: ActualizeImagePickerMultipleConfiguration): Promise<ActualizeImagePickerGenericResult & ActualizeImagePickerMultipleResult>;
 }
 
 declare let ActualizeImagePicker: ActualizeImagePickerModule;

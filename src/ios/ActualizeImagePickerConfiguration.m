@@ -17,6 +17,7 @@
     self = [super init];
     if (self) {
         self.imageQuality = 100;
+        self.mediaType = @"image"; // Default to images only
     }
     return self;
 }
@@ -32,6 +33,7 @@
     if (self) {
         self.maxImages = 0;
         self.imageQuality = 100;
+        self.mediaType = @"image"; // Default to images only
     }
     return self;
 }
