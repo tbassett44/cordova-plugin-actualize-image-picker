@@ -53,6 +53,21 @@ export interface ActualizeImagePickerSingleConfiguration {
     * The type of media to pick: "image", "video", or "all" (default = "image")
     */
     mediaType?: "image" | "video" | "all";
+    /**
+    * The quality preset for video transcoding (default = "medium")
+    * - "low": Highly compressed, suitable for messaging
+    * - "medium": Balanced quality/size (default)
+    * - "high": High quality (720p)
+    * - "highest": Maximum quality
+    * - "passthrough": No transcoding, just copy the file
+    * Note: On iOS, videos are transcoded to MP4 format. On Android, videos are currently copied as-is.
+    */
+    videoQuality?: "low" | "medium" | "high" | "highest" | "passthrough";
+    /**
+    * The message shown in the progress overlay during video transcoding (default = "Processing video...")
+    * Note: Only applies to iOS. On Android, videos are currently copied without transcoding.
+    */
+    videoProcessingMessage?: string;
 }
 ```
 
@@ -91,6 +106,13 @@ const mixedResult = await ActualizeImagePicker.pickImages({ mediaType: 'all' });
 if (mixedResult.status == "OK") {
     let media = mixedResult.imageFilesUris;
 }
+
+// Pick videos with high quality transcoding
+const hqResult = await ActualizeImagePicker.pickImages({
+    mediaType: 'video',
+    videoQuality: 'high',
+    maxImages: 3
+});
 ```
 
 **Optional Parameters**
@@ -110,6 +132,21 @@ export interface ActualizeImagePickerMultipleConfiguration {
     * The type of media to pick: "image", "video", or "all" (default = "image")
     */
     mediaType?: "image" | "video" | "all";
+    /**
+    * The quality preset for video transcoding (default = "medium")
+    * - "low": Highly compressed, suitable for messaging
+    * - "medium": Balanced quality/size (default)
+    * - "high": High quality (720p)
+    * - "highest": Maximum quality
+    * - "passthrough": No transcoding, just copy the file
+    * Note: On iOS, videos are transcoded to MP4 format. On Android, videos are currently copied as-is.
+    */
+    videoQuality?: "low" | "medium" | "high" | "highest" | "passthrough";
+    /**
+    * The message shown in the progress overlay during video transcoding (default = "Processing video...")
+    * Note: Only applies to iOS. On Android, videos are currently copied without transcoding.
+    */
+    videoProcessingMessage?: string;
 }
 ```
 
@@ -135,6 +172,8 @@ Forked from [Scanbot Image Picker for Cordova](https://github.com/scanbot/cordov
 - Added support for Android 11 and 12
 - Changed Android Image Picker to use the native Android Photo Picker
 - Added video picking support via `mediaType` option (iOS 14+ and Android 13+)
+- Added video transcoding with configurable quality presets via `videoQuality` option (iOS only)
+- Added native progress overlay during video transcoding with configurable message via `videoProcessingMessage` option (iOS only)
 
 ### License
 

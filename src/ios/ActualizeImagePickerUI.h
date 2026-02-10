@@ -20,6 +20,7 @@
 
 typedef void (^SingleImagePickerCompletionBlock)(BOOL, NSString*);
 typedef void (^MultipleImagePickerCompletionBlock)(BOOL, NSArray*);
+typedef void (^VideoTranscodeCompletionBlock)(NSURL* _Nullable outputUrl, NSError* _Nullable error);
 static NSString *const Error_IOS_13 = @"iOS13_ImageManager_returned_nil";
 
 @interface ActualizeImagePickerUI: NSObject<GMImagePickerControllerDelegate, PHPickerViewControllerDelegate>
@@ -43,6 +44,14 @@ static NSString *const Error_IOS_13 = @"iOS13_ImageManager_returned_nil";
 /// @param imageSelectionLimit the maximum number of items that can be selected (0 = unlimited)
 /// @param mediaType the type of media to show ("image", "video", or "all")
 - (UIViewController*)getImagePickerViewController:(NSUInteger)imageSelectionLimit mediaType:(NSString*)mediaType;
+
+/// Transcode a video to MP4 format with compression
+/// @param sourceUrl the source video URL
+/// @param quality the quality preset ("low", "medium", "high", "highest", "passthrough")
+/// @param completion block called when transcoding completes with output URL or error
+- (void)transcodeVideoToMp4:(NSURL*)sourceUrl
+                    quality:(NSString*)quality
+                 completion:(VideoTranscodeCompletionBlock)completion;
 @end
 
 #endif

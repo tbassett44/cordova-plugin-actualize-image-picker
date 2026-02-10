@@ -13,8 +13,19 @@
 @implementation ActualizeImagePickerUI {
     NSUInteger savedImagesQuality; /// The quality of the returned selected images, from 0 to 100
     NSString *savedMediaType; /// The media type filter ("image", "video", or "all")
+    NSString *savedVideoQuality; /// The video quality preset ("low", "medium", "high", "highest", "passthrough")
+    NSString *savedVideoProcessingMessage; /// The message shown during video transcoding
     SingleImagePickerCompletionBlock singleImagePickerBlock; /// The current active Single Image Picker completion block
     MultipleImagePickerCompletionBlock multipleImagePickerBlock; /// The current active Multiple Image Picker completion block
+
+    // Progress overlay UI elements
+    UIView *progressOverlayView;
+    UIView *progressContainerView;
+    UIActivityIndicatorView *activityIndicator;
+    CAShapeLayer *progressCircleLayer;
+    CAShapeLayer *progressTrackLayer;
+    UILabel *progressMessageLabel;
+    UILabel *progressPercentLabel;
 }
 
 // MARK: - ActualizeImagePickerUI SharedInstance
@@ -159,13 +170,19 @@ static ActualizeImagePickerUI *_sharedInstance;
                 ActualizeImagePickerUI* weakSelf = _weakSelf;
 
                 if (url && !error) {
-                    NSURL* videoUrl = [weakSelf saveVideoToTemp:url];
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        [lock lock];
-                        [fileUrls addObject:[videoUrl absoluteString]];
-                        dispatch_group_leave(group);
-                        [lock unlock];
-                    });
+                    // Transcode video to MP4 with compression
+                    [weakSelf transcodeVideoToMp4:url quality:weakSelf->savedVideoQuality completion:^(NSURL * _Nullable outputUrl, NSError * _Nullable transcodeError) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [lock lock];
+                            if (outputUrl && !transcodeError) {
+                                [fileUrls addObject:[outputUrl absoluteString]];
+                            } else {
+                                NSLog(@"Video transcode error: %@", transcodeError);
+                            }
+                            dispatch_group_leave(group);
+                            [lock unlock];
+                        });
+                    }];
                 } else {
                     dispatch_group_leave(group);
                 }
@@ -208,6 +225,8 @@ static ActualizeImagePickerUI *_sharedInstance;
 
     self->savedImagesQuality = configuration.imageQuality;
     self->savedMediaType = configuration.mediaType;
+    self->savedVideoQuality = configuration.videoQuality ?: @"medium";
+    self->savedVideoProcessingMessage = configuration.videoProcessingMessage ?: @"Processing video...";
     UIViewController* outViewController = [self getImagePickerViewController:1 mediaType:configuration.mediaType];
     return outViewController;
 }
@@ -215,6 +234,8 @@ static ActualizeImagePickerUI *_sharedInstance;
 - (UIViewController*) createMultipleImagePickerViewController:(ActualizeImagePickerMultipleConfiguration*) configuration {
     self->savedImagesQuality = configuration.imageQuality;
     self->savedMediaType = configuration.mediaType;
+    self->savedVideoQuality = configuration.videoQuality ?: @"medium";
+    self->savedVideoProcessingMessage = configuration.videoProcessingMessage ?: @"Processing video...";
     UIViewController* outViewController = [self getImagePickerViewController:configuration.maxImages mediaType:configuration.mediaType];
     return outViewController;
 }
@@ -235,8 +256,15 @@ static ActualizeImagePickerUI *_sharedInstance;
             if ([avAsset isKindOfClass:[AVURLAsset class]]) {
                 AVURLAsset *urlAsset = (AVURLAsset *)avAsset;
                 NSURL *sourceURL = urlAsset.URL;
-                NSURL *tmpVideoURL = [self saveVideoToTemp:sourceURL];
-                completion(tmpVideoURL.absoluteString);
+                // Transcode video to MP4 with compression
+                [self transcodeVideoToMp4:sourceURL quality:self->savedVideoQuality completion:^(NSURL * _Nullable outputUrl, NSError * _Nullable error) {
+                    if (outputUrl && !error) {
+                        completion(outputUrl.absoluteString);
+                    } else {
+                        NSLog(@"Video transcode error in filePathFromAsset: %@", error);
+                        completion(@"");
+                    }
+                }];
             } else {
                 completion(@"");
             }
@@ -276,42 +304,270 @@ static ActualizeImagePickerUI *_sharedInstance;
     return fileURL;
 }
 
-/**
- Common Function to save Video on local path
- Copies the video file from the temporary URL provided by the picker to the app's temp directory
- */
--(NSURL*)saveVideoToTemp:(NSURL*)sourceUrl {
-    if (!sourceUrl) { return [[NSURL alloc] initWithString:@""]; }
+// MARK: - Progress Overlay Methods
 
+/**
+ Shows a progress overlay with a radial progress indicator and message
+ @param message the message to display below the progress indicator
+ */
+- (void)showProgressOverlayWithMessage:(NSString*)message {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->progressOverlayView) {
+            [self hideProgressOverlay];
+        }
+
+        UIWindow *window = [UIApplication sharedApplication].delegate.window;
+        if (!window) return;
+
+        // Create overlay background
+        self->progressOverlayView = [[UIView alloc] initWithFrame:window.bounds];
+        self->progressOverlayView.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.7];
+        self->progressOverlayView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+        // Create container for progress elements
+        CGFloat containerSize = 160;
+        self->progressContainerView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, containerSize, containerSize + 50)];
+        self->progressContainerView.center = self->progressOverlayView.center;
+        self->progressContainerView.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin |
+                                                       UIViewAutoresizingFlexibleTopMargin | UIViewAutoresizingFlexibleBottomMargin;
+        self->progressContainerView.backgroundColor = [[UIColor darkGrayColor] colorWithAlphaComponent:0.9];
+        self->progressContainerView.layer.cornerRadius = 16;
+
+        // Create progress track (background circle)
+        CGFloat circleSize = 80;
+        CGFloat circleX = (containerSize - circleSize) / 2;
+        CGFloat circleY = 20;
+        UIBezierPath *circlePath = [UIBezierPath bezierPathWithArcCenter:CGPointMake(circleSize/2, circleSize/2)
+                                                                  radius:(circleSize - 8) / 2
+                                                              startAngle:-M_PI_2
+                                                                endAngle:M_PI_2 * 3
+                                                               clockwise:YES];
+
+        self->progressTrackLayer = [CAShapeLayer layer];
+        self->progressTrackLayer.path = circlePath.CGPath;
+        self->progressTrackLayer.strokeColor = [[UIColor whiteColor] colorWithAlphaComponent:0.3].CGColor;
+        self->progressTrackLayer.fillColor = [UIColor clearColor].CGColor;
+        self->progressTrackLayer.lineWidth = 6;
+        self->progressTrackLayer.frame = CGRectMake(circleX, circleY, circleSize, circleSize);
+        [self->progressContainerView.layer addSublayer:self->progressTrackLayer];
+
+        // Create progress circle (foreground)
+        self->progressCircleLayer = [CAShapeLayer layer];
+        self->progressCircleLayer.path = circlePath.CGPath;
+        self->progressCircleLayer.strokeColor = [UIColor systemBlueColor].CGColor;
+        self->progressCircleLayer.fillColor = [UIColor clearColor].CGColor;
+        self->progressCircleLayer.lineWidth = 6;
+        self->progressCircleLayer.lineCap = kCALineCapRound;
+        self->progressCircleLayer.strokeEnd = 0.0;
+        self->progressCircleLayer.frame = CGRectMake(circleX, circleY, circleSize, circleSize);
+        [self->progressContainerView.layer addSublayer:self->progressCircleLayer];
+
+        // Create percent label in center of circle
+        self->progressPercentLabel = [[UILabel alloc] initWithFrame:CGRectMake(circleX, circleY, circleSize, circleSize)];
+        self->progressPercentLabel.textAlignment = NSTextAlignmentCenter;
+        self->progressPercentLabel.textColor = [UIColor whiteColor];
+        self->progressPercentLabel.font = [UIFont boldSystemFontOfSize:18];
+        self->progressPercentLabel.text = @"0%";
+        [self->progressContainerView addSubview:self->progressPercentLabel];
+
+        // Create message label
+        self->progressMessageLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, circleY + circleSize + 15, containerSize - 20, 50)];
+        self->progressMessageLabel.textAlignment = NSTextAlignmentCenter;
+        self->progressMessageLabel.textColor = [UIColor whiteColor];
+        self->progressMessageLabel.font = [UIFont systemFontOfSize:14];
+        self->progressMessageLabel.numberOfLines = 2;
+        self->progressMessageLabel.text = message ?: @"Processing video...";
+        [self->progressContainerView addSubview:self->progressMessageLabel];
+
+        [self->progressOverlayView addSubview:self->progressContainerView];
+        [window addSubview:self->progressOverlayView];
+
+        // Fade in animation
+        self->progressOverlayView.alpha = 0;
+        [UIView animateWithDuration:0.25 animations:^{
+            self->progressOverlayView.alpha = 1;
+        }];
+    });
+}
+
+/**
+ Updates the progress indicator with the current progress value
+ @param progress the progress value from 0.0 to 1.0
+ */
+- (void)updateProgress:(float)progress {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->progressCircleLayer) {
+            self->progressCircleLayer.strokeEnd = progress;
+        }
+        if (self->progressPercentLabel) {
+            self->progressPercentLabel.text = [NSString stringWithFormat:@"%d%%", (int)(progress * 100)];
+        }
+    });
+}
+
+/**
+ Hides and removes the progress overlay
+ */
+- (void)hideProgressOverlay {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->progressOverlayView) {
+            [UIView animateWithDuration:0.25 animations:^{
+                self->progressOverlayView.alpha = 0;
+            } completion:^(BOOL finished) {
+                [self->progressOverlayView removeFromSuperview];
+                self->progressOverlayView = nil;
+                self->progressContainerView = nil;
+                self->progressCircleLayer = nil;
+                self->progressTrackLayer = nil;
+                self->progressMessageLabel = nil;
+                self->progressPercentLabel = nil;
+            }];
+        }
+    });
+}
+
+/**
+ Returns the AVAssetExportSession preset string for a given quality setting
+ @param quality the quality string ("low", "medium", "high", "highest", "passthrough")
+ @return the corresponding AVAssetExportPreset string
+ */
+- (NSString*)exportPresetForQuality:(NSString*)quality {
+    if ([quality isEqualToString:@"low"]) {
+        return AVAssetExportPresetLowQuality;
+    } else if ([quality isEqualToString:@"medium"]) {
+        return AVAssetExportPresetMediumQuality;
+    } else if ([quality isEqualToString:@"high"]) {
+        return AVAssetExportPreset1280x720;
+    } else if ([quality isEqualToString:@"highest"]) {
+        return AVAssetExportPresetHighestQuality;
+    } else if ([quality isEqualToString:@"passthrough"]) {
+        return AVAssetExportPresetPassthrough;
+    }
+    // Default to medium quality
+    return AVAssetExportPresetMediumQuality;
+}
+
+/**
+ Transcodes a video to MP4 format with the specified quality preset.
+ This replaces the old saveVideoToTemp: method to provide compression.
+ @param sourceUrl the source video URL
+ @param quality the quality preset ("low", "medium", "high", "highest", "passthrough")
+ @param completion block called when transcoding completes
+ */
+- (void)transcodeVideoToMp4:(NSURL*)sourceUrl
+                    quality:(NSString*)quality
+                 completion:(VideoTranscodeCompletionBlock)completion {
+
+    if (!sourceUrl) {
+        if (completion) {
+            NSError *error = [NSError errorWithDomain:@"ActualizeImagePicker"
+                                                code:-1
+                                            userInfo:@{NSLocalizedDescriptionKey: @"Source URL is nil"}];
+            completion(nil, error);
+        }
+        return;
+    }
+
+    // Show progress overlay
+    [self showProgressOverlayWithMessage:self->savedVideoProcessingMessage];
+
+    // Generate output URL in temp directory
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSURL *tmpDirURL = [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
-
-    // Use the original filename or generate one based on hash
-    NSString *originalFilename = [sourceUrl lastPathComponent];
-    NSString *extension = [sourceUrl pathExtension];
-    if (!extension || [extension length] == 0) {
-        extension = @"mp4"; // Default to mp4
-    }
-
-    // Generate a unique filename using timestamp and random number
-    NSString *fileName = [NSString stringWithFormat:@"video_%lu_%d.%@",
+    NSString *fileName = [NSString stringWithFormat:@"video_%lu_%d.mp4",
                          (unsigned long)[[NSDate date] timeIntervalSince1970],
-                         arc4random_uniform(10000),
-                         extension];
-    NSURL *destUrl = [tmpDirURL URLByAppendingPathComponent:fileName];
+                         arc4random_uniform(10000)];
+    NSURL *outputUrl = [tmpDirURL URLByAppendingPathComponent:fileName];
 
-    NSError *error;
     // Remove existing file if any
-    [fileManager removeItemAtURL:destUrl error:nil];
+    [fileManager removeItemAtURL:outputUrl error:nil];
 
-    // Copy the video file
-    BOOL success = [fileManager copyItemAtURL:sourceUrl toURL:destUrl error:&error];
-    if (!success) {
-        NSLog(@"Error copying video file: %@", error);
-        return [[NSURL alloc] initWithString:@""];
+    // Create asset from source URL
+    AVAsset *asset = [AVAsset assetWithURL:sourceUrl];
+
+    // Get the appropriate export preset
+    NSString *presetName = [self exportPresetForQuality:quality];
+
+    // Check if the preset is compatible with the asset
+    NSArray *compatiblePresets = [AVAssetExportSession exportPresetsCompatibleWithAsset:asset];
+    if (![compatiblePresets containsObject:presetName]) {
+        NSLog(@"Preset %@ not compatible, falling back to MediumQuality", presetName);
+        presetName = AVAssetExportPresetMediumQuality;
+        if (![compatiblePresets containsObject:presetName]) {
+            // Fall back to passthrough if nothing else works
+            presetName = AVAssetExportPresetPassthrough;
+        }
     }
 
-    return destUrl;
+    // Create export session
+    AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:asset
+                                                                          presetName:presetName];
+
+    if (!exportSession) {
+        [self hideProgressOverlay];
+        if (completion) {
+            NSError *error = [NSError errorWithDomain:@"ActualizeImagePicker"
+                                                code:-2
+                                            userInfo:@{NSLocalizedDescriptionKey: @"Could not create export session"}];
+            completion(nil, error);
+        }
+        return;
+    }
+
+    exportSession.outputURL = outputUrl;
+    exportSession.outputFileType = AVFileTypeMPEG4;
+    exportSession.shouldOptimizeForNetworkUse = YES;
+
+    NSLog(@"Starting video transcode with preset: %@", presetName);
+
+    // Create a timer to poll export progress
+    __weak ActualizeImagePickerUI *weakSelf = self;
+    __block NSTimer *progressTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
+                                                                     repeats:YES
+                                                                       block:^(NSTimer * _Nonnull timer) {
+        if (exportSession.status == AVAssetExportSessionStatusExporting) {
+            [weakSelf updateProgress:exportSession.progress];
+        } else if (exportSession.status != AVAssetExportSessionStatusWaiting) {
+            [timer invalidate];
+        }
+    }];
+
+    [exportSession exportAsynchronouslyWithCompletionHandler:^{
+        // Stop the progress timer
+        [progressTimer invalidate];
+
+        // Hide progress overlay
+        [weakSelf hideProgressOverlay];
+
+        switch (exportSession.status) {
+            case AVAssetExportSessionStatusCompleted:
+                NSLog(@"Video transcode completed successfully");
+                if (completion) {
+                    completion(outputUrl, nil);
+                }
+                break;
+
+            case AVAssetExportSessionStatusFailed:
+                NSLog(@"Video transcode failed: %@", exportSession.error);
+                if (completion) {
+                    completion(nil, exportSession.error);
+                }
+                break;
+
+            case AVAssetExportSessionStatusCancelled:
+                NSLog(@"Video transcode cancelled");
+                if (completion) {
+                    NSError *error = [NSError errorWithDomain:@"ActualizeImagePicker"
+                                                        code:-3
+                                                    userInfo:@{NSLocalizedDescriptionKey: @"Export was cancelled"}];
+                    completion(nil, error);
+                }
+                break;
+
+            default:
+                break;
+        }
+    }];
 }
 
 - (UIViewController*) rootViewController {

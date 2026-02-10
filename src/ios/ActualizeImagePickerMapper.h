@@ -10,6 +10,8 @@
 #ifndef ActualizeImagePickerMapper_h
 #define ActualizeImagePickerMapper_h
 
+#import <Foundation/Foundation.h>
+
 @interface ActualizeImagePickerMapper : NSObject
 + (void)populateInstance:(id)instance
           fromDictionary:(NSDictionary*)dictionary;

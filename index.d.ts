@@ -13,6 +13,14 @@ export type ActualizeImagePickerStatus = "OK" | "CANCELED";
 // Media type for the picker
 export type ActualizeImagePickerMediaType = "image" | "video" | "all";
 
+// Video quality preset for transcoding
+// - "low": Highly compressed, suitable for messaging
+// - "medium": Balanced quality/size (default)
+// - "high": High quality (720p)
+// - "highest": Maximum quality
+// - "passthrough": No transcoding, just copy the file
+export type ActualizeImagePickerVideoQuality = "low" | "medium" | "high" | "highest" | "passthrough";
+
 // Configurations
 export interface ActualizeImagePickerSingleConfiguration {
     /**
@@ -23,6 +31,20 @@ export interface ActualizeImagePickerSingleConfiguration {
      * The type of media to pick: "image", "video", or "all" (default = "image")
      */
     mediaType?: ActualizeImagePickerMediaType;
+    /**
+     * The quality preset for video transcoding (default = "medium")
+     * - "low": Highly compressed, suitable for messaging
+     * - "medium": Balanced quality/size
+     * - "high": High quality (720p)
+     * - "highest": Maximum quality
+     * - "passthrough": No transcoding, just copy the file
+     */
+    videoQuality?: ActualizeImagePickerVideoQuality;
+    /**
+     * The message shown in the progress overlay during video transcoding (default = "Processing video...")
+     * Only applies to iOS. On Android, videos are currently copied without transcoding.
+     */
+    videoProcessingMessage?: string;
 }
 
 export interface ActualizeImagePickerMultipleConfiguration {
@@ -38,6 +60,20 @@ export interface ActualizeImagePickerMultipleConfiguration {
      * The type of media to pick: "image", "video", or "all" (default = "image")
      */
     mediaType?: ActualizeImagePickerMediaType;
+    /**
+     * The quality preset for video transcoding (default = "medium")
+     * - "low": Highly compressed, suitable for messaging
+     * - "medium": Balanced quality/size
+     * - "high": High quality (720p)
+     * - "highest": Maximum quality
+     * - "passthrough": No transcoding, just copy the file
+     */
+    videoQuality?: ActualizeImagePickerVideoQuality;
+    /**
+     * The message shown in the progress overlay during video transcoding (default = "Processing video...")
+     * Only applies to iOS. On Android, videos are currently copied without transcoding.
+     */
+    videoProcessingMessage?: string;
 }
 
 // Results

@@ -48,6 +48,8 @@ public class ActualizeImagePicker extends CordovaPlugin {
     private int imageQuality = 100;
     private int maxImages = 0;
     private String mediaType = "image"; // "image", "video", or "all"
+    private String videoQuality = "medium"; // "low", "medium", "high", "highest", "passthrough"
+    private String videoProcessingMessage = "Processing video..."; // Message for progress overlay (reserved for future use)
 
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
@@ -86,6 +88,18 @@ public class ActualizeImagePicker extends CordovaPlugin {
             this.mediaType = args.getString("mediaType");
         } catch (Exception ignored) {
             this.mediaType = "image";
+        }
+
+        try {
+            this.videoQuality = args.getString("videoQuality");
+        } catch (Exception ignored) {
+            this.videoQuality = "medium";
+        }
+
+        try {
+            this.videoProcessingMessage = args.getString("videoProcessingMessage");
+        } catch (Exception ignored) {
+            this.videoProcessingMessage = "Processing video...";
         }
 
         String mimeType = getMimeTypeForMediaType(this.mediaType);
@@ -132,6 +146,18 @@ public class ActualizeImagePicker extends CordovaPlugin {
             this.mediaType = args.getString("mediaType");
         } catch (Exception ignored) {
             this.mediaType = "image";
+        }
+
+        try {
+            this.videoQuality = args.getString("videoQuality");
+        } catch (Exception ignored) {
+            this.videoQuality = "medium";
+        }
+
+        try {
+            this.videoProcessingMessage = args.getString("videoProcessingMessage");
+        } catch (Exception ignored) {
+            this.videoProcessingMessage = "Processing video...";
         }
 
         String mimeType = getMimeTypeForMediaType(this.mediaType);

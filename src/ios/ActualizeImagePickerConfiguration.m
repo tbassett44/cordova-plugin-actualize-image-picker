@@ -18,6 +18,8 @@
     if (self) {
         self.imageQuality = 100;
         self.mediaType = @"image"; // Default to images only
+        self.videoQuality = @"medium"; // Default to medium quality (good compression/quality balance)
+        self.videoProcessingMessage = @"Processing video..."; // Default message for progress overlay
     }
     return self;
 }
@@ -34,6 +36,8 @@
         self.maxImages = 0;
         self.imageQuality = 100;
         self.mediaType = @"image"; // Default to images only
+        self.videoQuality = @"medium"; // Default to medium quality (good compression/quality balance)
+        self.videoProcessingMessage = @"Processing video..."; // Default message for progress overlay
     }
     return self;
 }
