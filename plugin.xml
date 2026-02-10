@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<plugin id="cordova-plugin-actualize-image-picker" version="2.2.2"
+<plugin id="cordova-plugin-actualize-image-picker" version="3.3.3"
     xmlns="http://apache.org/cordova/ns/plugins/1.0"
     xmlns:android="http://schemas.android.com/apk/res/android">
     <name>Actualize Image Cordova Plugin</name>
@@ -38,12 +38,19 @@
             </feature>
         </config-file>
 
-        <framework src="src/ios/Frameworks/GMImagePickerWithCloudMediaDownloading.framework" custom="true" embed="true" />
-
+        <!-- Use CocoaPods for GMImagePickerWithCloudMediaDownloading (includes simulator support) -->
+        <podspec>
+            <config>
+                <source url="https://cdn.cocoapods.org/"/>
+            </config>
+            <pods use-frameworks="true">
+                <pod name="GMImagePickerWithCloudMediaDownloading" spec="~> 1.0" />
+            </pods>
+        </podspec>
 
         <preference name="PHOTOLIBRARY_USAGE_DESCRIPTION" default="This app needs to access your photo library in order to import images" />
         <config-file target="*-Info.plist" parent="NSPhotoLibraryUsageDescription">
-        <string>$PHOTOLIBRARY_USAGE_DESCRIPTION</string>
+            <string>$PHOTOLIBRARY_USAGE_DESCRIPTION</string>
         </config-file>
 
         <source-file src="src/ios/ActualizeImagePicker.m" />
@@ -53,6 +60,5 @@
         <source-file src="src/ios/ActualizeImagePickerMapper.m" />
         <header-file src="src/ios/ActualizeImagePickerUI.h" />
         <source-file src="src/ios/ActualizeImagePickerUI.m" />
-        <source-file src="src/ios/Frameworks/GMImagePickerWithCloudMediaDownloading.framework" target-dir="lib" framework="true" />
     </platform>
 </plugin>
