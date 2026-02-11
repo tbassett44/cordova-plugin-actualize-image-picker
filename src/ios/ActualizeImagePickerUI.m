@@ -48,17 +48,45 @@ static ActualizeImagePickerUI *_sharedInstance;
 /// @param completion block function for handling the result (isCanceled: BOOL, imageFileUri: NSString*)
 - (void) startSingleImagePicker:(ActualizeImagePickerSingleConfiguration*) configuration
                      completion:(SingleImagePickerCompletionBlock) completion {
+    NSLog(@"[ActualizeImagePickerUI] startSingleImagePicker: called");
     __weak ActualizeImagePickerUI* _self = self;
     dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"[ActualizeImagePickerUI] startSingleImagePicker: on main queue");
         UIViewController* viewController = [_self createSingleImagePickerViewController:configuration];
+        NSLog(@"[ActualizeImagePickerUI] startSingleImagePicker: created viewController = %@", viewController);
+
         if (_self) {
             ((ActualizeImagePickerUI*) _self)->singleImagePickerBlock = ^void(BOOL isCanceled, NSString* imageFileUri) {
+                NSLog(@"[ActualizeImagePickerUI] singleImagePickerBlock: called with isCanceled=%d, uri=%@", isCanceled, imageFileUri);
                 completion(isCanceled, imageFileUri);
-                
+
                 ((ActualizeImagePickerUI*) _self)->singleImagePickerBlock = nil;
             };
         }
-        [[_self rootViewController] presentViewController:viewController animated:true completion:nil];
+
+        UIViewController* rootVC = [_self rootViewController];
+        NSLog(@"[ActualizeImagePickerUI] startSingleImagePicker: rootViewController = %@", rootVC);
+
+        if (!rootVC) {
+            NSLog(@"[ActualizeImagePickerUI] startSingleImagePicker: ERROR - rootViewController is nil!");
+            if (completion) {
+                completion(YES, nil);  // Report as canceled
+            }
+            return;
+        }
+
+        if (!viewController) {
+            NSLog(@"[ActualizeImagePickerUI] startSingleImagePicker: ERROR - viewController is nil!");
+            if (completion) {
+                completion(YES, nil);  // Report as canceled
+            }
+            return;
+        }
+
+        NSLog(@"[ActualizeImagePickerUI] startSingleImagePicker: presenting viewController");
+        [rootVC presentViewController:viewController animated:true completion:^{
+            NSLog(@"[ActualizeImagePickerUI] startSingleImagePicker: viewController presented successfully");
+        }];
     });
 }
 
@@ -67,22 +95,51 @@ static ActualizeImagePickerUI *_sharedInstance;
 /// @param completion block function for handling the result (isCanceled: BOOL, imageFilesUris: NSArray*)
 - (void) startMultipleImagePicker:(ActualizeImagePickerMultipleConfiguration*) configuration
                        completion:(MultipleImagePickerCompletionBlock) completion {
-    
+    NSLog(@"[ActualizeImagePickerUI] startMultipleImagePicker: called");
+
     __weak ActualizeImagePickerUI* _self = self;
     dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"[ActualizeImagePickerUI] startMultipleImagePicker: on main queue");
         UIViewController* viewController = [_self createMultipleImagePickerViewController:configuration];
+        NSLog(@"[ActualizeImagePickerUI] startMultipleImagePicker: created viewController = %@", viewController);
+
         if (_self) {
             ((ActualizeImagePickerUI*) _self)->multipleImagePickerBlock = ^void(BOOL isCanceled, NSArray* imageFilesUris) {
+                NSLog(@"[ActualizeImagePickerUI] multipleImagePickerBlock: called with isCanceled=%d, count=%lu", isCanceled, (unsigned long)imageFilesUris.count);
                 completion(isCanceled, imageFilesUris);
-                
+
                 ((ActualizeImagePickerUI*) _self)->multipleImagePickerBlock = nil;
             };
         }
-        [[_self rootViewController] presentViewController:viewController animated:true completion:nil];
+
+        UIViewController* rootVC = [_self rootViewController];
+        NSLog(@"[ActualizeImagePickerUI] startMultipleImagePicker: rootViewController = %@", rootVC);
+
+        if (!rootVC) {
+            NSLog(@"[ActualizeImagePickerUI] startMultipleImagePicker: ERROR - rootViewController is nil!");
+            if (completion) {
+                completion(YES, @[]);
+            }
+            return;
+        }
+
+        if (!viewController) {
+            NSLog(@"[ActualizeImagePickerUI] startMultipleImagePicker: ERROR - viewController is nil!");
+            if (completion) {
+                completion(YES, @[]);
+            }
+            return;
+        }
+
+        NSLog(@"[ActualizeImagePickerUI] startMultipleImagePicker: presenting viewController");
+        [rootVC presentViewController:viewController animated:true completion:^{
+            NSLog(@"[ActualizeImagePickerUI] startMultipleImagePicker: viewController presented successfully");
+        }];
     });
 }
 
 - (void)assetsPickerController:(GMImagePickerController *)picker didFinishPickingAssets:(NSArray *)assets {
+    NSLog(@"[ActualizeImagePickerUI] assetsPickerController:didFinishPickingAssets: called with %lu assets (GMImagePicker - iOS < 14)", (unsigned long)assets.count);
     NSLock* lock = [[NSLock alloc] init];
     NSMutableArray* fileUrls = [[NSMutableArray alloc] init];
 
@@ -92,6 +149,7 @@ static ActualizeImagePickerUI *_sharedInstance;
         dispatch_group_enter(group);
         [self filePathFromAsset:asset onFinish: ^(NSString* fileUrl) {
             [lock lock];
+            NSLog(@"[ActualizeImagePickerUI] assetsPickerController: got fileUrl = %@", fileUrl);
             if (fileUrl && ![fileUrl isEqualToString:@""]) {
                 [fileUrls addObject:fileUrl];
             }
@@ -102,12 +160,15 @@ static ActualizeImagePickerUI *_sharedInstance;
 
     __weak ActualizeImagePickerUI *_weakSelf = self;
     dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        NSLog(@"[ActualizeImagePickerUI] assetsPickerController: all assets processed, fileUrls count = %lu", (unsigned long)fileUrls.count);
         ActualizeImagePickerUI *weakSelf = _weakSelf;
         if (weakSelf->singleImagePickerBlock) {
+            NSLog(@"[ActualizeImagePickerUI] assetsPickerController: calling singleImagePickerBlock with firstObject");
             weakSelf->singleImagePickerBlock(false, [fileUrls firstObject]);
         }
 
         if (weakSelf->multipleImagePickerBlock) {
+            NSLog(@"[ActualizeImagePickerUI] assetsPickerController: calling multipleImagePickerBlock");
             weakSelf->multipleImagePickerBlock(false, fileUrls);
         }
 
@@ -116,17 +177,20 @@ static ActualizeImagePickerUI *_sharedInstance;
 }
 
 - (void)assetsPickerControllerDidCancel:(GMImagePickerController *)picker {
+    NSLog(@"[ActualizeImagePickerUI] assetsPickerControllerDidCancel: called (GMImagePicker - iOS < 14)");
     __weak ActualizeImagePickerUI* weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!weakSelf) { return; }
-        
+
         [picker dismissViewControllerAnimated:true completion:nil];
-        
+
         if (self->singleImagePickerBlock) {
+            NSLog(@"[ActualizeImagePickerUI] assetsPickerControllerDidCancel: calling singleImagePickerBlock(canceled)");
             self->singleImagePickerBlock(true, nil);
         }
-        
+
         if (self->multipleImagePickerBlock) {
+            NSLog(@"[ActualizeImagePickerUI] assetsPickerControllerDidCancel: calling multipleImagePickerBlock(canceled)");
             self->multipleImagePickerBlock(true, [[NSArray alloc] init]);
         }
     });
@@ -135,15 +199,19 @@ static ActualizeImagePickerUI *_sharedInstance;
 // MARK: - PHPickerViewControllerDelegate Implementation
 // For iOS >= 14 we use iOS PHPicker for image picking
 - (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results  API_AVAILABLE(ios(14)){
+    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: called with %lu results (PHPicker - iOS 14+)", (unsigned long)results.count);
 
     [picker dismissViewControllerAnimated: true completion: nil];
 
     // If the picker didn't return any results, the user has most probably canceled the
     // operation, so we don't even try to parse the results and return a 'canceled' state
     if (results.count == 0) {
+        NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: no results, treating as canceled");
         if (self->singleImagePickerBlock) {
+            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: calling singleImagePickerBlock(canceled)");
             self->singleImagePickerBlock(true, nil);
         } else if (self->multipleImagePickerBlock) {
+            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: calling multipleImagePickerBlock(canceled)");
             self->multipleImagePickerBlock(true, [[NSArray alloc] init]);
         }
         return;
@@ -156,52 +224,75 @@ static ActualizeImagePickerUI *_sharedInstance;
     dispatch_group_t group = dispatch_group_create();
     NSMutableArray* fileUrls = [[NSMutableArray alloc] init];
 
+    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: processing %lu results", (unsigned long)results.count);
+
     for (PHPickerResult *result in results) {
         dispatch_group_enter(group);
         __weak ActualizeImagePickerUI* _weakSelf = self;
 
         NSItemProvider *provider = result.itemProvider;
+        NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: processing item - registeredTypeIdentifiers: %@", provider.registeredTypeIdentifiers);
 
         // Check if the item is a video
         if ([provider hasItemConformingToTypeIdentifier:@"public.movie"]) {
+            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: loading video");
             // Load video file
             [provider loadFileRepresentationForTypeIdentifier:@"public.movie" completionHandler:^(NSURL * _Nullable url, NSError * _Nullable error) {
-                if (!_weakSelf) { dispatch_group_leave(group); return; }
+                if (!_weakSelf) {
+                    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video load - weakSelf is nil");
+                    dispatch_group_leave(group);
+                    return;
+                }
                 ActualizeImagePickerUI* weakSelf = _weakSelf;
 
                 if (url && !error) {
+                    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video loaded, transcoding - url=%@", url);
                     // Transcode video to MP4 with compression
                     [weakSelf transcodeVideoToMp4:url quality:weakSelf->savedVideoQuality completion:^(NSURL * _Nullable outputUrl, NSError * _Nullable transcodeError) {
                         dispatch_async(dispatch_get_main_queue(), ^{
                             [lock lock];
                             if (outputUrl && !transcodeError) {
+                                NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video transcoded - outputUrl=%@", outputUrl);
                                 [fileUrls addObject:[outputUrl absoluteString]];
                             } else {
-                                NSLog(@"Video transcode error: %@", transcodeError);
+                                NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video transcode error: %@", transcodeError);
                             }
                             dispatch_group_leave(group);
                             [lock unlock];
                         });
                     }];
                 } else {
+                    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video load error: %@", error);
                     dispatch_group_leave(group);
                 }
             }];
         } else if ([provider canLoadObjectOfClass:[UIImage class]]) {
+            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: loading image");
             // Load image
             [provider loadObjectOfClass:[UIImage class] completionHandler:^(__kindof id<NSItemProviderReading> _Nullable object, NSError * _Nullable error) {
-                if (!_weakSelf) { dispatch_group_leave(group); return; }
+                if (!_weakSelf) {
+                    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: image load - weakSelf is nil");
+                    dispatch_group_leave(group);
+                    return;
+                }
                 ActualizeImagePickerUI* weakSelf = _weakSelf;
+
+                if (error) {
+                    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: image load error: %@", error);
+                }
 
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [lock lock];
+                    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: saving image to temp");
                     NSURL* imageUrl = [weakSelf saveImageToTemp:(UIImage*) object];
+                    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: image saved - imageUrl=%@", imageUrl);
                     [fileUrls addObject:[imageUrl absoluteString]];
                     dispatch_group_leave(group);
                     [lock unlock];
                 });
             }];
         } else {
+            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: unknown item type, skipping");
             dispatch_group_leave(group);
         }
     }
@@ -209,34 +300,47 @@ static ActualizeImagePickerUI *_sharedInstance;
     // Returns the result using the correct callback
     __weak ActualizeImagePickerUI *_weakSelf = self;
     dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-        if (!_weakSelf) { return; }
+        NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: all items processed, fileUrls count = %lu", (unsigned long)fileUrls.count);
+        if (!_weakSelf) {
+            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: ERROR - weakSelf is nil in notify block");
+            return;
+        }
         ActualizeImagePickerUI *weakSelf = _weakSelf;
 
         if (weakSelf->singleImagePickerBlock) {
+            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: calling singleImagePickerBlock with firstObject = %@", [fileUrls firstObject]);
             weakSelf->singleImagePickerBlock(false, [fileUrls firstObject]);
         } else if (weakSelf->multipleImagePickerBlock) {
+            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: calling multipleImagePickerBlock with %lu items", (unsigned long)fileUrls.count);
             weakSelf->multipleImagePickerBlock(false, fileUrls);
+        } else {
+            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: WARNING - no completion block set!");
         }
     });
 }
 
 // MARK: - ViewController(s) Creation Utility Methods
 - (UIViewController*) createSingleImagePickerViewController:(ActualizeImagePickerSingleConfiguration*) configuration {
+    NSLog(@"[ActualizeImagePickerUI] createSingleImagePickerViewController: mediaType=%@, imageQuality=%lu", configuration.mediaType, (unsigned long)configuration.imageQuality);
 
     self->savedImagesQuality = configuration.imageQuality;
     self->savedMediaType = configuration.mediaType;
     self->savedVideoQuality = configuration.videoQuality ?: @"medium";
     self->savedVideoProcessingMessage = configuration.videoProcessingMessage ?: @"Processing video...";
     UIViewController* outViewController = [self getImagePickerViewController:1 mediaType:configuration.mediaType];
+    NSLog(@"[ActualizeImagePickerUI] createSingleImagePickerViewController: created viewController = %@", outViewController);
     return outViewController;
 }
 
 - (UIViewController*) createMultipleImagePickerViewController:(ActualizeImagePickerMultipleConfiguration*) configuration {
+    NSLog(@"[ActualizeImagePickerUI] createMultipleImagePickerViewController: maxImages=%lu, mediaType=%@", (unsigned long)configuration.maxImages, configuration.mediaType);
+
     self->savedImagesQuality = configuration.imageQuality;
     self->savedMediaType = configuration.mediaType;
     self->savedVideoQuality = configuration.videoQuality ?: @"medium";
     self->savedVideoProcessingMessage = configuration.videoProcessingMessage ?: @"Processing video...";
     UIViewController* outViewController = [self getImagePickerViewController:configuration.maxImages mediaType:configuration.mediaType];
+    NSLog(@"[ActualizeImagePickerUI] createMultipleImagePickerViewController: created viewController = %@", outViewController);
     return outViewController;
 }
 
@@ -292,14 +396,27 @@ static ActualizeImagePickerUI *_sharedInstance;
  Common Function to save Image on local path
  */
 -(NSURL*)saveImageToTemp:(UIImage*)image {
-    if (!image) { return [[NSURL alloc] initWithString:@""]; }
+    NSLog(@"[ActualizeImagePickerUI] saveImageToTemp: called with image=%@", image);
+    if (!image) {
+        NSLog(@"[ActualizeImagePickerUI] saveImageToTemp: ERROR - image is nil!");
+        return [[NSURL alloc] initWithString:@""];
+    }
 
     NSURL *tmpDirURL = [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
     NSString *fileName = [NSString stringWithFormat:@"%lu", image.hash];
     NSURL *fileURL = [[tmpDirURL URLByAppendingPathComponent: fileName] URLByAppendingPathExtension:@"jpg"];
 
     CGFloat quality = self->savedImagesQuality / 100.0;
-    [UIImageJPEGRepresentation(image, quality) writeToFile:[fileURL path] atomically:YES];
+    NSLog(@"[ActualizeImagePickerUI] saveImageToTemp: saving to %@ with quality %.2f", fileURL, quality);
+
+    NSData *imageData = UIImageJPEGRepresentation(image, quality);
+    if (!imageData) {
+        NSLog(@"[ActualizeImagePickerUI] saveImageToTemp: ERROR - UIImageJPEGRepresentation returned nil!");
+        return [[NSURL alloc] initWithString:@""];
+    }
+
+    BOOL success = [imageData writeToFile:[fileURL path] atomically:YES];
+    NSLog(@"[ActualizeImagePickerUI] saveImageToTemp: write success=%d, fileURL=%@", success, fileURL);
 
     return fileURL;
 }
@@ -571,7 +688,9 @@ static ActualizeImagePickerUI *_sharedInstance;
 }
 
 - (UIViewController*) rootViewController {
-    return [UIApplication sharedApplication].delegate.window.rootViewController;
+    UIViewController *rootVC = [UIApplication sharedApplication].delegate.window.rootViewController;
+    NSLog(@"[ActualizeImagePickerUI] rootViewController: returning %@", rootVC);
+    return rootVC;
 }
 
 /**
@@ -582,31 +701,39 @@ static ActualizeImagePickerUI *_sharedInstance;
  @param mediaType the type of media to show ("image", "video", or "all")
  */
 -(UIViewController*)getImagePickerViewController:(NSUInteger)imageSelectionLimit mediaType:(NSString*)mediaType {
+    NSLog(@"[ActualizeImagePickerUI] getImagePickerViewController: selectionLimit=%lu, mediaType=%@", (unsigned long)imageSelectionLimit, mediaType);
+
     UIViewController *outViewController = nil;
     // We need two separate implementations for iOS < 14 and iOS >= 14
     // Because iOS provided new APIs for picking multiple images since iOS 14 which works with local and iCloud images very well.
     if (@available(iOS 14, *)) {
+        NSLog(@"[ActualizeImagePickerUI] getImagePickerViewController: using PHPickerViewController (iOS 14+)");
         PHPickerConfiguration *config = [[PHPickerConfiguration alloc] init];
         config.selectionLimit = imageSelectionLimit;
 
         // Set the filter based on mediaType
         if ([mediaType isEqualToString:@"video"]) {
+            NSLog(@"[ActualizeImagePickerUI] getImagePickerViewController: filter = video");
             config.filter = [PHPickerFilter videosFilter];
         } else if ([mediaType isEqualToString:@"all"]) {
+            NSLog(@"[ActualizeImagePickerUI] getImagePickerViewController: filter = all (images + videos)");
             config.filter = [PHPickerFilter anyFilterMatchingSubfilters:@[
                 [PHPickerFilter imagesFilter],
                 [PHPickerFilter videosFilter]
             ]];
         } else {
+            NSLog(@"[ActualizeImagePickerUI] getImagePickerViewController: filter = images (default)");
             // Default to images only
             config.filter = [PHPickerFilter imagesFilter];
         }
 
         PHPickerViewController *pickerViewController = [[PHPickerViewController alloc] initWithConfiguration:config];
         pickerViewController.delegate = self;
+        NSLog(@"[ActualizeImagePickerUI] getImagePickerViewController: created PHPickerViewController, delegate set to self");
 
         outViewController = pickerViewController;
     } else {
+        NSLog(@"[ActualizeImagePickerUI] getImagePickerViewController: using GMImagePickerController (iOS < 14)");
         GMImagePickerController* viewController = [[GMImagePickerController alloc] init];
 
         viewController.delegate = self;
@@ -622,6 +749,7 @@ static ActualizeImagePickerUI *_sharedInstance;
             viewController.mediaTypes = @[@(PHAssetMediaTypeImage)];
         }
         viewController.displayAlbumsNumberOfAssets = YES;
+        NSLog(@"[ActualizeImagePickerUI] getImagePickerViewController: created GMImagePickerController");
 
         outViewController = viewController;
     }
