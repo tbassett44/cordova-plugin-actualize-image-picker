@@ -43,9 +43,23 @@
 
     // Starts Single Image Picker and returns result
     NSLog(@"[ActualizeImagePicker] pickImage: starting single image picker");
+
+    ActualizeImagePickerUI* pickerUI = [ActualizeImagePickerUI shared];
+    NSLog(@"[ActualizeImagePicker] pickImage: got shared instance = %@", pickerUI);
+
+    if (!pickerUI) {
+        NSLog(@"[ActualizeImagePicker] pickImage: ERROR - shared instance is nil!");
+        [self reportError:@"Image picker UI instance is nil" toCommand:command];
+        return;
+    }
+
+    // Debug test to verify implementation is linked
+    [pickerUI debugTest];
+    NSLog(@"[ActualizeImagePicker] pickImage: debugTest called, now calling startSingleImagePicker");
+
     __weak ActualizeImagePicker* _self = self;
-    [[ActualizeImagePickerUI shared] startSingleImagePicker:imagePickerConfiguration
-                                               completion:^(BOOL isCanceled, NSString* imageFileUri) {
+    [pickerUI startSingleImagePicker:imagePickerConfiguration
+                          completion:^(BOOL isCanceled, NSString* imageFileUri) {
         NSLog(@"[ActualizeImagePicker] pickImage: completion callback - isCanceled=%d, imageFileUri=%@", isCanceled, imageFileUri);
 
         if (isCanceled) {
@@ -60,9 +74,11 @@
             result[@"status"] = @"FAILED";
             result[@"message"] = @"Unable to select the image.";
         } else {
-            NSLog(@"[ActualizeImagePicker] pickImage: SUCCESS - returning URI");
+            NSLog(@"[ActualizeImagePicker] pickImage: SUCCESS - converting URI for WKWebView");
+            // Convert file:// URL to data: URL for WKWebView compatibility
+            NSString *convertedUri = [_self convertFileUriToDataUri:imageFileUri];
             result[@"status"] = @"OK";
-            result[@"imageFileUri"] = imageFileUri;
+            result[@"imageFileUri"] = convertedUri;
         }
 
         NSLog(@"[ActualizeImagePicker] pickImage: sending result = %@", result);
@@ -112,7 +128,9 @@
             if ([uri isEqualToString:Error_IOS_13] || [uri isEqualToString:@""]){
                 isError = true;
             } else {
-                [filteredUris addObject:uri];
+                // Convert file:// URL to data: URL for WKWebView compatibility
+                NSString *convertedUri = [_self convertFileUriToDataUri:uri];
+                [filteredUris addObject:convertedUri];
             }
         }
 
@@ -147,6 +165,61 @@
         @"status": @"CANCELED"
     }];
     [self.commandDelegate sendPluginResult:result callbackId:command.callbackId];
+}
+
+/// Converts a file:// URL to a base64 data URL for WKWebView compatibility
+/// @param fileUri the file:// URL string
+/// @return a data:image/jpeg;base64,... URL string, or the original URI if conversion fails
+- (NSString*)convertFileUriToDataUri:(NSString*)fileUri {
+    if (!fileUri || fileUri.length == 0) {
+        return fileUri;
+    }
+
+    // Check if it's a file URL
+    if (![fileUri hasPrefix:@"file://"]) {
+        return fileUri; // Return as-is if not a file URL
+    }
+
+    // Check if it's a video file (don't convert videos to base64)
+    NSString *lowercaseUri = [fileUri lowercaseString];
+    if ([lowercaseUri hasSuffix:@".mp4"] || [lowercaseUri hasSuffix:@".mov"] ||
+        [lowercaseUri hasSuffix:@".m4v"] || [lowercaseUri hasSuffix:@".avi"]) {
+        return fileUri; // Return video URLs as-is
+    }
+
+    @try {
+        NSURL *fileURL = [NSURL URLWithString:fileUri];
+        if (!fileURL) {
+            NSLog(@"[ActualizeImagePicker] convertFileUriToDataUri: failed to create URL from %@", fileUri);
+            return fileUri;
+        }
+
+        NSData *imageData = [NSData dataWithContentsOfURL:fileURL];
+        if (!imageData) {
+            NSLog(@"[ActualizeImagePicker] convertFileUriToDataUri: failed to read data from %@", fileUri);
+            return fileUri;
+        }
+
+        NSString *base64String = [imageData base64EncodedStringWithOptions:0];
+        NSString *mimeType = @"image/jpeg"; // Default to JPEG
+
+        // Check file extension for mime type
+        if ([lowercaseUri hasSuffix:@".png"]) {
+            mimeType = @"image/png";
+        } else if ([lowercaseUri hasSuffix:@".gif"]) {
+            mimeType = @"image/gif";
+        } else if ([lowercaseUri hasSuffix:@".heic"] || [lowercaseUri hasSuffix:@".heif"]) {
+            mimeType = @"image/heic";
+        }
+
+        NSString *dataUri = [NSString stringWithFormat:@"data:%@;base64,%@", mimeType, base64String];
+        NSLog(@"[ActualizeImagePicker] convertFileUriToDataUri: converted to data URI (length=%lu)", (unsigned long)dataUri.length);
+        return dataUri;
+    }
+    @catch (NSException *exception) {
+        NSLog(@"[ActualizeImagePicker] convertFileUriToDataUri: exception - %@", exception.reason);
+        return fileUri;
+    }
 }
 
 @end

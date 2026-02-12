@@ -28,6 +28,9 @@ static NSString *const Error_IOS_13 = @"iOS13_ImageManager_returned_nil";
 /// Returns shared ActualizeImagePickerUI instance
 + (ActualizeImagePickerUI *)shared;
 
+/// Debug method to verify implementation is linked
+- (void)debugTest;
+
 /// Starts an Image Picker to select just one image
 /// @param configuration the desired configuration, of type ActualizeImagePickerSingleConfiguration
 /// @param completion block function for handling the result (isCanceled: BOOL, imageFileUri: NSString*)

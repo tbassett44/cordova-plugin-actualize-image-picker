@@ -41,6 +41,11 @@ static ActualizeImagePickerUI *_sharedInstance;
     }
 }
 
+/// Debug method to verify implementation is linked
+- (void)debugTest {
+    NSLog(@"[ActualizeImagePickerUI] debugTest: implementation is properly linked!");
+}
+
 // MARK: - GMImagePickerViewController Implementation
 
 /// Starts an Image Picker to select just one image
@@ -688,7 +693,49 @@ static ActualizeImagePickerUI *_sharedInstance;
 }
 
 - (UIViewController*) rootViewController {
-    UIViewController *rootVC = [UIApplication sharedApplication].delegate.window.rootViewController;
+    UIViewController *rootVC = nil;
+
+    // Try the traditional AppDelegate window approach first
+    rootVC = [UIApplication sharedApplication].delegate.window.rootViewController;
+
+    // If nil, try iOS 13+ scene-based approach
+    if (!rootVC) {
+        if (@available(iOS 13.0, *)) {
+            for (UIWindowScene *windowScene in [UIApplication sharedApplication].connectedScenes) {
+                if (windowScene.activationState == UISceneActivationStateForegroundActive) {
+                    for (UIWindow *window in windowScene.windows) {
+                        if (window.isKeyWindow) {
+                            rootVC = window.rootViewController;
+                            break;
+                        }
+                    }
+                    if (rootVC) break;
+                }
+            }
+
+            // Fallback: if still nil, try any foreground scene's first window
+            if (!rootVC) {
+                for (UIWindowScene *windowScene in [UIApplication sharedApplication].connectedScenes) {
+                    if (windowScene.activationState == UISceneActivationStateForegroundActive) {
+                        UIWindow *firstWindow = windowScene.windows.firstObject;
+                        if (firstWindow) {
+                            rootVC = firstWindow.rootViewController;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Final fallback: try keyWindow (deprecated but still works)
+    if (!rootVC) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        rootVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+        #pragma clang diagnostic pop
+    }
+
     NSLog(@"[ActualizeImagePickerUI] rootViewController: returning %@", rootVC);
     return rootVC;
 }
