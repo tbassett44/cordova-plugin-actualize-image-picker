@@ -248,24 +248,22 @@ static ActualizeImagePickerUI *_sharedInstance;
                     dispatch_group_leave(group);
                     return;
                 }
-                ActualizeImagePickerUI* weakSelf = _weakSelf;
 
                 if (url && !error) {
-                    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video loaded, transcoding - url=%@", url);
-                    // Transcode video to MP4 with compression
-                    [weakSelf transcodeVideoToMp4:url quality:weakSelf->savedVideoQuality completion:^(NSURL * _Nullable outputUrl, NSError * _Nullable transcodeError) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            [lock lock];
-                            if (outputUrl && !transcodeError) {
-                                NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video transcoded - outputUrl=%@", outputUrl);
-                                [fileUrls addObject:[outputUrl absoluteString]];
-                            } else {
-                                NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video transcode error: %@", transcodeError);
-                            }
-                            dispatch_group_leave(group);
-                            [lock unlock];
-                        });
-                    }];
+                    NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video loaded - url=%@", url);
+                    // Copy video to temp directory (no transcoding)
+                    NSURL *outputUrl = [_weakSelf copyVideoToTemp:url];
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [lock lock];
+                        if (outputUrl) {
+                            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video copied - outputUrl=%@", outputUrl);
+                            [fileUrls addObject:[outputUrl absoluteString]];
+                        } else {
+                            NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video copy failed");
+                        }
+                        dispatch_group_leave(group);
+                        [lock unlock];
+                    });
                 } else {
                     NSLog(@"[ActualizeImagePickerUI] picker:didFinishPicking: video load error: %@", error);
                     dispatch_group_leave(group);
@@ -365,15 +363,14 @@ static ActualizeImagePickerUI *_sharedInstance;
             if ([avAsset isKindOfClass:[AVURLAsset class]]) {
                 AVURLAsset *urlAsset = (AVURLAsset *)avAsset;
                 NSURL *sourceURL = urlAsset.URL;
-                // Transcode video to MP4 with compression
-                [self transcodeVideoToMp4:sourceURL quality:self->savedVideoQuality completion:^(NSURL * _Nullable outputUrl, NSError * _Nullable error) {
-                    if (outputUrl && !error) {
-                        completion(outputUrl.absoluteString);
-                    } else {
-                        NSLog(@"Video transcode error in filePathFromAsset: %@", error);
-                        completion(@"");
-                    }
-                }];
+                // Copy video to temp directory (no transcoding)
+                NSURL *outputUrl = [self copyVideoToTemp:sourceURL];
+                if (outputUrl) {
+                    completion(outputUrl.absoluteString);
+                } else {
+                    NSLog(@"Video copy error in filePathFromAsset");
+                    completion(@"");
+                }
             } else {
                 completion(@"");
             }
@@ -424,6 +421,50 @@ static ActualizeImagePickerUI *_sharedInstance;
     NSLog(@"[ActualizeImagePickerUI] saveImageToTemp: write success=%d, fileURL=%@", success, fileURL);
 
     return fileURL;
+}
+
+/**
+ Copies a video file to the temp directory without any transcoding/processing.
+ @param sourceUrl the source video URL
+ @return the URL of the copied video file, or nil on failure
+ */
+-(NSURL*)copyVideoToTemp:(NSURL*)sourceUrl {
+    NSLog(@"[ActualizeImagePickerUI] copyVideoToTemp: called with sourceUrl=%@", sourceUrl);
+    if (!sourceUrl) {
+        NSLog(@"[ActualizeImagePickerUI] copyVideoToTemp: ERROR - sourceUrl is nil!");
+        return nil;
+    }
+
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSURL *tmpDirURL = [NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES];
+
+    // Get the original file extension
+    NSString *extension = [sourceUrl pathExtension];
+    if (!extension || [extension length] == 0) {
+        extension = @"mp4"; // Default to mp4 if no extension
+    }
+
+    // Generate unique filename
+    NSString *fileName = [NSString stringWithFormat:@"video_%lu_%d.%@",
+                         (unsigned long)[[NSDate date] timeIntervalSince1970],
+                         arc4random_uniform(10000),
+                         extension];
+    NSURL *outputUrl = [tmpDirURL URLByAppendingPathComponent:fileName];
+
+    // Remove existing file if any
+    [fileManager removeItemAtURL:outputUrl error:nil];
+
+    // Copy the file
+    NSError *copyError = nil;
+    BOOL success = [fileManager copyItemAtURL:sourceUrl toURL:outputUrl error:&copyError];
+
+    if (success) {
+        NSLog(@"[ActualizeImagePickerUI] copyVideoToTemp: copied successfully to %@", outputUrl);
+        return outputUrl;
+    } else {
+        NSLog(@"[ActualizeImagePickerUI] copyVideoToTemp: ERROR copying file: %@", copyError);
+        return nil;
+    }
 }
 
 // MARK: - Progress Overlay Methods

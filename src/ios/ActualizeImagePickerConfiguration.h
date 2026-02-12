@@ -22,18 +22,18 @@
 // MARK: - Single Image Picker Configuration
 @interface ActualizeImagePickerSingleConfiguration: NSObject
     @property (nonatomic, assign) NSUInteger imageQuality;
-    @property (nonatomic, strong) NSString *mediaType; // "image", "video", or "all"
-    @property (nonatomic, strong) NSString *videoQuality; // "low", "medium", "high", "highest", "passthrough" (default: "medium")
-    @property (nonatomic, strong) NSString *videoProcessingMessage; // Message shown during video transcoding (default: "Processing video...")
+    @property (nonatomic, strong) NSString *mediaType; // "image" (default), "video", or "all"
+    @property (nonatomic, strong) NSString *videoQuality; // "low", "medium", "high", "highest", "passthrough" (default: "medium") - only used when mediaType includes video
+    @property (nonatomic, strong) NSString *videoProcessingMessage; // Message shown during video transcoding (default: "Processing video...") - only used when mediaType includes video
 @end
 
 // MARK: - Multiple Image Picker Configuration
 @interface ActualizeImagePickerMultipleConfiguration: NSObject
     @property (nonatomic, assign) NSUInteger maxImages;
     @property (nonatomic, assign) NSUInteger imageQuality;
-    @property (nonatomic, strong) NSString *mediaType; // "image", "video", or "all"
-    @property (nonatomic, strong) NSString *videoQuality; // "low", "medium", "high", "highest", "passthrough" (default: "medium")
-    @property (nonatomic, strong) NSString *videoProcessingMessage; // Message shown during video transcoding (default: "Processing video...")
+    @property (nonatomic, strong) NSString *mediaType; // "image" (default), "video", or "all"
+    @property (nonatomic, strong) NSString *videoQuality; // "low", "medium", "high", "highest", "passthrough" (default: "medium") - only used when mediaType includes video
+    @property (nonatomic, strong) NSString *videoProcessingMessage; // Message shown during video transcoding (default: "Processing video...") - only used when mediaType includes video
 @end
 
 #endif
