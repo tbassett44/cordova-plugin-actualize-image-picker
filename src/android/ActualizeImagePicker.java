@@ -105,23 +105,30 @@ public class ActualizeImagePicker extends CordovaPlugin {
         String mimeType = getMimeTypeForMediaType(this.mediaType);
         Intent intent;
 
+        android.util.Log.d("ActualizeImagePicker", "startSingleImagePicker: mediaType=" + this.mediaType + ", mimeType=" + mimeType);
+        android.util.Log.d("ActualizeImagePicker", "startSingleImagePicker: SDK_INT=" + Build.VERSION.SDK_INT);
+
         // Use the native photo picker on Android 11+ (API 30+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             // Android 13+ - Use MediaStore.ACTION_PICK_IMAGES
+            android.util.Log.d("ActualizeImagePicker", "startSingleImagePicker: using ACTION_PICK_IMAGES (Android 13+)");
             intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
             intent.setType(mimeType);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11-12 - Photo picker may be available via backport
+            android.util.Log.d("ActualizeImagePicker", "startSingleImagePicker: using ACTION_OPEN_DOCUMENT (Android 11-12)");
             intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType(mimeType);
         } else {
             // Fallback for older Android versions
+            android.util.Log.d("ActualizeImagePicker", "startSingleImagePicker: using ACTION_OPEN_DOCUMENT (older Android)");
             intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType(mimeType);
         }
 
+        android.util.Log.d("ActualizeImagePicker", "startSingleImagePicker: setting activity result callback and starting activity");
         cordova.setActivityResultCallback(ActualizeImagePicker.this);
         cordova.startActivityForResult(this, intent, SINGLE_IMAGE_PICKER_REQUEST_CODE);
     }
@@ -190,24 +197,37 @@ public class ActualizeImagePicker extends CordovaPlugin {
     public void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
 
+        android.util.Log.d("ActualizeImagePicker", "onActivityResult: requestCode=" + requestCode + ", resultCode=" + resultCode + ", intent=" + intent);
+
+        // Check if we have a valid callback context
+        if (this.callbackContext == null) {
+            android.util.Log.e("ActualizeImagePicker", "onActivityResult: callbackContext is null!");
+            return;
+        }
+
         final boolean isCanceled = resultCode != Activity.RESULT_OK;
+        android.util.Log.d("ActualizeImagePicker", "onActivityResult: isCanceled=" + isCanceled);
 
         switch (requestCode) {
 
             case SINGLE_IMAGE_PICKER_REQUEST_CODE:
                 if (isCanceled) {
+                    android.util.Log.d("ActualizeImagePicker", "Single picker canceled");
                     handleSingleImagePickerResult(true, null);
                     return;
                 }
                 if (intent == null || intent.getData() == null) {
+                    android.util.Log.d("ActualizeImagePicker", "Single picker: intent or data is null");
                     handleSingleImagePickerResult(true, null);
                     return;
                 }
+                android.util.Log.d("ActualizeImagePicker", "Single picker success: " + intent.getData().toString());
                 handleSingleImagePickerResult(false, intent.getData().toString());
                 break;
 
             case MULTIPLE_IMAGE_PICKER_REQUEST_CODE:
                 if (isCanceled) {
+                    android.util.Log.d("ActualizeImagePicker", "Multiple picker canceled");
                     handleMultipleImagePickerResult(true, new String[]{});
                     return;
                 }
@@ -219,6 +239,7 @@ public class ActualizeImagePicker extends CordovaPlugin {
                     ClipData clipData = intent.getClipData();
                     if (clipData != null) {
                         int count = clipData.getItemCount();
+                        android.util.Log.d("ActualizeImagePicker", "Multiple picker: clipData count=" + count);
                         // Apply maxImages limit if set
                         if (maxImages > 0 && count > maxImages) {
                             count = maxImages;
@@ -231,11 +252,17 @@ public class ActualizeImagePicker extends CordovaPlugin {
                         }
                     } else if (intent.getData() != null) {
                         // Single selection fallback
+                        android.util.Log.d("ActualizeImagePicker", "Multiple picker: single data=" + intent.getData().toString());
                         uriList.add(intent.getData().toString());
                     }
                 }
 
+                android.util.Log.d("ActualizeImagePicker", "Multiple picker success: " + uriList.size() + " items");
                 handleMultipleImagePickerResult(false, uriList.toArray(new String[0]));
+                break;
+
+            default:
+                android.util.Log.d("ActualizeImagePicker", "Unknown requestCode: " + requestCode);
                 break;
         }
     }
