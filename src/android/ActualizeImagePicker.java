@@ -19,9 +19,16 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
 
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.exifinterface.media.ExifInterface;
 
+import org.apache.cordova.CordovaInterface;
 import org.apache.cordova.CordovaPlugin;
+import org.apache.cordova.CordovaWebView;
 import org.apache.cordova.CallbackContext;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -41,15 +48,58 @@ import earth.actualize.cordova.plugin.utils.JsonArgs;
 
 public class ActualizeImagePicker extends CordovaPlugin {
 
-    private static final int SINGLE_IMAGE_PICKER_REQUEST_CODE = 999001;
-    private static final int MULTIPLE_IMAGE_PICKER_REQUEST_CODE = 999002;
-
     private CallbackContext callbackContext;
     private int imageQuality = 100;
     private int maxImages = 0;
     private String mediaType = "image"; // "image", "video", or "all"
     private String videoQuality = "medium"; // "low", "medium", "high", "highest", "passthrough"
     private String videoProcessingMessage = "Processing video..."; // Message for progress overlay (reserved for future use)
+
+    // ActivityResultLaunchers for the modern activity result API
+    private ActivityResultLauncher<Intent> singleImageLauncher;
+    private ActivityResultLauncher<Intent> multipleImageLauncher;
+
+    @Override
+    public void initialize(CordovaInterface cordova, CordovaWebView webView) {
+        super.initialize(cordova, webView);
+
+        android.util.Log.d("ActualizeImagePicker", "initialize: registering ActivityResultLaunchers");
+
+        // Get the activity and cast to AppCompatActivity (required for registerForActivityResult)
+        Activity activity = cordova.getActivity();
+        if (!(activity instanceof AppCompatActivity)) {
+            android.util.Log.e("ActualizeImagePicker", "Activity is not an AppCompatActivity, ActivityResultLauncher may not work");
+            return;
+        }
+
+        AppCompatActivity appCompatActivity = (AppCompatActivity) activity;
+
+        // Register single image picker launcher
+        singleImageLauncher = appCompatActivity.registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            new ActivityResultCallback<ActivityResult>() {
+                @Override
+                public void onActivityResult(ActivityResult result) {
+                    android.util.Log.d("ActualizeImagePicker", "singleImageLauncher callback: resultCode=" + result.getResultCode());
+                    handleSingleImageResult(result);
+                }
+            }
+        );
+
+        // Register multiple image picker launcher
+        multipleImageLauncher = appCompatActivity.registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            new ActivityResultCallback<ActivityResult>() {
+                @Override
+                public void onActivityResult(ActivityResult result) {
+                    android.util.Log.d("ActualizeImagePicker", "multipleImageLauncher callback: resultCode=" + result.getResultCode());
+                    handleMultipleImageResult(result);
+                }
+            }
+        );
+
+        android.util.Log.d("ActualizeImagePicker", "initialize: ActivityResultLaunchers registered successfully");
+    }
 
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
@@ -128,9 +178,13 @@ public class ActualizeImagePicker extends CordovaPlugin {
             intent.setType(mimeType);
         }
 
-        android.util.Log.d("ActualizeImagePicker", "startSingleImagePicker: setting activity result callback and starting activity");
-        cordova.setActivityResultCallback(ActualizeImagePicker.this);
-        cordova.startActivityForResult(this, intent, SINGLE_IMAGE_PICKER_REQUEST_CODE);
+        android.util.Log.d("ActualizeImagePicker", "startSingleImagePicker: launching with ActivityResultLauncher");
+        if (singleImageLauncher != null) {
+            singleImageLauncher.launch(intent);
+        } else {
+            android.util.Log.e("ActualizeImagePicker", "singleImageLauncher is null - plugin may not have been initialized properly");
+            callbackContext.error("Image picker not initialized. Please ensure the plugin is properly configured.");
+        }
     }
 
     /**
@@ -189,82 +243,100 @@ public class ActualizeImagePicker extends CordovaPlugin {
             intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         }
 
-        cordova.setActivityResultCallback(ActualizeImagePicker.this);
-        cordova.startActivityForResult(this, intent, MULTIPLE_IMAGE_PICKER_REQUEST_CODE);
+        android.util.Log.d("ActualizeImagePicker", "startMultipleImagePicker: launching with ActivityResultLauncher");
+        if (multipleImageLauncher != null) {
+            multipleImageLauncher.launch(intent);
+        } else {
+            android.util.Log.e("ActualizeImagePicker", "multipleImageLauncher is null - plugin may not have been initialized properly");
+            callbackContext.error("Image picker not initialized. Please ensure the plugin is properly configured.");
+        }
     }
 
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent intent) {
-        super.onActivityResult(requestCode, resultCode, intent);
+    /**
+     * Handles the result from the single image picker ActivityResultLauncher.
+     * @param result the ActivityResult from the launcher
+     */
+    private void handleSingleImageResult(ActivityResult result) {
+        int resultCode = result.getResultCode();
+        Intent intent = result.getData();
 
-        android.util.Log.d("ActualizeImagePicker", "onActivityResult: requestCode=" + requestCode + ", resultCode=" + resultCode + ", intent=" + intent);
+        android.util.Log.d("ActualizeImagePicker", "handleSingleImageResult: resultCode=" + resultCode + ", intent=" + intent);
 
         // Check if we have a valid callback context
         if (this.callbackContext == null) {
-            android.util.Log.e("ActualizeImagePicker", "onActivityResult: callbackContext is null!");
+            android.util.Log.e("ActualizeImagePicker", "handleSingleImageResult: callbackContext is null!");
             return;
         }
 
         final boolean isCanceled = resultCode != Activity.RESULT_OK;
-        android.util.Log.d("ActualizeImagePicker", "onActivityResult: isCanceled=" + isCanceled);
+        android.util.Log.d("ActualizeImagePicker", "handleSingleImageResult: isCanceled=" + isCanceled);
 
-        switch (requestCode) {
+        if (isCanceled) {
+            android.util.Log.d("ActualizeImagePicker", "Single picker canceled");
+            handleSingleImagePickerResult(true, null);
+            return;
+        }
+        if (intent == null || intent.getData() == null) {
+            android.util.Log.d("ActualizeImagePicker", "Single picker: intent or data is null");
+            handleSingleImagePickerResult(true, null);
+            return;
+        }
+        android.util.Log.d("ActualizeImagePicker", "Single picker success: " + intent.getData().toString());
+        handleSingleImagePickerResult(false, intent.getData().toString());
+    }
 
-            case SINGLE_IMAGE_PICKER_REQUEST_CODE:
-                if (isCanceled) {
-                    android.util.Log.d("ActualizeImagePicker", "Single picker canceled");
-                    handleSingleImagePickerResult(true, null);
-                    return;
+    /**
+     * Handles the result from the multiple image picker ActivityResultLauncher.
+     * @param result the ActivityResult from the launcher
+     */
+    private void handleMultipleImageResult(ActivityResult result) {
+        int resultCode = result.getResultCode();
+        Intent intent = result.getData();
+
+        android.util.Log.d("ActualizeImagePicker", "handleMultipleImageResult: resultCode=" + resultCode + ", intent=" + intent);
+
+        // Check if we have a valid callback context
+        if (this.callbackContext == null) {
+            android.util.Log.e("ActualizeImagePicker", "handleMultipleImageResult: callbackContext is null!");
+            return;
+        }
+
+        final boolean isCanceled = resultCode != Activity.RESULT_OK;
+        android.util.Log.d("ActualizeImagePicker", "handleMultipleImageResult: isCanceled=" + isCanceled);
+
+        if (isCanceled) {
+            android.util.Log.d("ActualizeImagePicker", "Multiple picker canceled");
+            handleMultipleImagePickerResult(true, new String[]{});
+            return;
+        }
+
+        List<String> uriList = new ArrayList<>();
+
+        if (intent != null) {
+            // Check for multiple selection via ClipData
+            ClipData clipData = intent.getClipData();
+            if (clipData != null) {
+                int count = clipData.getItemCount();
+                android.util.Log.d("ActualizeImagePicker", "Multiple picker: clipData count=" + count);
+                // Apply maxImages limit if set
+                if (maxImages > 0 && count > maxImages) {
+                    count = maxImages;
                 }
-                if (intent == null || intent.getData() == null) {
-                    android.util.Log.d("ActualizeImagePicker", "Single picker: intent or data is null");
-                    handleSingleImagePickerResult(true, null);
-                    return;
-                }
-                android.util.Log.d("ActualizeImagePicker", "Single picker success: " + intent.getData().toString());
-                handleSingleImagePickerResult(false, intent.getData().toString());
-                break;
-
-            case MULTIPLE_IMAGE_PICKER_REQUEST_CODE:
-                if (isCanceled) {
-                    android.util.Log.d("ActualizeImagePicker", "Multiple picker canceled");
-                    handleMultipleImagePickerResult(true, new String[]{});
-                    return;
-                }
-
-                List<String> uriList = new ArrayList<>();
-
-                if (intent != null) {
-                    // Check for multiple selection via ClipData
-                    ClipData clipData = intent.getClipData();
-                    if (clipData != null) {
-                        int count = clipData.getItemCount();
-                        android.util.Log.d("ActualizeImagePicker", "Multiple picker: clipData count=" + count);
-                        // Apply maxImages limit if set
-                        if (maxImages > 0 && count > maxImages) {
-                            count = maxImages;
-                        }
-                        for (int i = 0; i < count; i++) {
-                            Uri uri = clipData.getItemAt(i).getUri();
-                            if (uri != null) {
-                                uriList.add(uri.toString());
-                            }
-                        }
-                    } else if (intent.getData() != null) {
-                        // Single selection fallback
-                        android.util.Log.d("ActualizeImagePicker", "Multiple picker: single data=" + intent.getData().toString());
-                        uriList.add(intent.getData().toString());
+                for (int i = 0; i < count; i++) {
+                    Uri uri = clipData.getItemAt(i).getUri();
+                    if (uri != null) {
+                        uriList.add(uri.toString());
                     }
                 }
-
-                android.util.Log.d("ActualizeImagePicker", "Multiple picker success: " + uriList.size() + " items");
-                handleMultipleImagePickerResult(false, uriList.toArray(new String[0]));
-                break;
-
-            default:
-                android.util.Log.d("ActualizeImagePicker", "Unknown requestCode: " + requestCode);
-                break;
+            } else if (intent.getData() != null) {
+                // Single selection fallback
+                android.util.Log.d("ActualizeImagePicker", "Multiple picker: single data=" + intent.getData().toString());
+                uriList.add(intent.getData().toString());
+            }
         }
+
+        android.util.Log.d("ActualizeImagePicker", "Multiple picker success: " + uriList.size() + " items");
+        handleMultipleImagePickerResult(false, uriList.toArray(new String[0]));
     }
 
     /**--------------------------------
